@@ -337,6 +337,149 @@ const Modal: ModalComponent = Object.assign(RootModal, {
   CloseButton: ModalCloseButton,
 });
 
+type AccordionItem = {
+  id: string;
+  contentId: string | null;
+  isActive?: boolean;
+}
+
+type AccordionContextType = {
+  items: AccordionItem[];
+  activeContentId: string | null;
+  registerContent: (contentId: string) => void;
+  registerTrigger: (itemId: string) => void;
+  setActiveContentId: (contentId: string | null) => void;
+}
+
+const AccordionContext = createContext<AccordionContextType | null>(null);
+
+const useAccordionContext = () => {
+  const context = useContext(AccordionContext);
+  if (!context) {
+    throw new Error('useAccordionContext must be used within a AccordionProvider');
+  }
+  return context;
+}
+
+function RootAccordion ({children}: {children: React.ReactNode}) {
+  const [items, setItems] = useState<AccordionItem[]>([]);
+  const [activeContentId, setActiveContentId] = useState<string | null>(null);
+
+  const registerTrigger = useCallback((id: string) => {
+    setItems(prev => {
+      if (prev.find(item => item.id === id)) {
+        console.log('Trigger already registered');
+        return prev;
+      }
+
+      return [...prev, {id, contentId: null, isActive: false}];
+    })
+  }, []);
+
+  const registerContent = useCallback((contentId: string) => {
+    setItems(prev => {
+      const alreadyRegistered = prev.find(item => item.contentId === contentId);
+      if (alreadyRegistered) {
+        console.log('Content already registered');
+        return prev;
+      }
+
+      const lastUnregistred = prev.find(item => item.contentId === null);
+      if (lastUnregistred === undefined) {
+        console.log('All items are registered');
+        return prev;
+      }
+
+      const triggerId = lastUnregistred.id;
+      return prev.map(item => 
+        item.id === triggerId ? { ...item, contentId } : item
+      );
+    })
+  }, []);
+
+  const contextValue = useMemo(() => ({
+    items,
+    activeContentId,
+    setActiveContentId,
+    registerTrigger,
+    registerContent,
+  }), [items, activeContentId, setActiveContentId, registerTrigger, registerContent]);
+
+  return (
+    <AccordionContext.Provider value={contextValue}>
+      {children}
+    </AccordionContext.Provider>
+  )
+}
+
+function AccordionContainer ({children}: {children: React.ReactNode}) {
+  return (
+    <div className='accordion-container'>
+      {children}
+    </div>
+  )
+}
+
+function AccordionTrigger ({children}: {children: React.ReactNode}) {
+  const {registerTrigger, items, setActiveContentId, activeContentId} = useAccordionContext();
+
+  const triggerId = useId();
+
+  useEffect(() => {
+    registerTrigger(triggerId);
+  }, [triggerId, registerTrigger]);
+
+  const myItem = items.find(item => item.id === triggerId);
+  const isActive = myItem?.contentId === activeContentId;
+
+  const handleClick = useCallback(() => {
+    if (myItem?.contentId) {
+      if (myItem.contentId === activeContentId) {
+        setActiveContentId(null);
+        return;
+      }
+
+      setActiveContentId(myItem.contentId);
+    }
+  }, [myItem, activeContentId, setActiveContentId]);
+  
+  const style = isActive ? {backgroundColor: 'blue', color: 'white'} : {};
+
+  return (
+    <button className='accordion-trigger' onClick={handleClick} style={style}>
+      {children}
+    </button>
+  )
+}
+
+function AccordionContent ({children}: {children: React.ReactNode}) {
+  const {activeContentId, registerContent} = useAccordionContext();
+
+  const contentId = useId();
+
+  useEffect(() => {
+    registerContent(contentId);
+  }, [contentId, registerContent]);
+
+  return activeContentId === contentId ? (
+    <div className='accordion-content'>
+      {children}
+    </div>
+  ) : null;
+}
+
+type AccordionComponent = typeof RootAccordion & {
+  Container: typeof AccordionContainer;
+  Trigger: typeof AccordionTrigger;
+  Content: typeof AccordionContent;
+}
+
+const Accordion: AccordionComponent = Object.assign(RootAccordion, {
+  Container: AccordionContainer,
+  Trigger: AccordionTrigger,
+  Content: AccordionContent,
+});
+
 export function App() {
   return (
     <div className='app'>
@@ -365,6 +508,21 @@ export function App() {
           </Modal.Container>
         </Modal.Content>
       </Modal>
+
+      <Accordion>
+        <Accordion.Container>
+          <Accordion.Trigger>Trigger 1</Accordion.Trigger>
+          <Accordion.Content>Content 1</Accordion.Content>
+        </Accordion.Container>
+        <Accordion.Container>
+          <Accordion.Trigger>Trigger 2</Accordion.Trigger>
+          <Accordion.Content>Content 2</Accordion.Content>
+        </Accordion.Container>
+        <Accordion.Container>
+          <Accordion.Trigger>Trigger 3</Accordion.Trigger>
+          <Accordion.Content>Content 3</Accordion.Content>
+        </Accordion.Container>
+      </Accordion>
     </div>
     
   )
