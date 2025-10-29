@@ -12,7 +12,7 @@ type TabsContextType = {
   activeContentId: string | null;
   setActiveContentId: (contentId: string | null) => void;
   registerTrigger: (id: string) => void;
-  registerContent: (id: string, contentId: string) => void;
+  registerContent: (contentId: string) => void;
 }
 
 const TabsContext = createContext<TabsContextType | null>(null);
@@ -44,43 +44,59 @@ function RootTabs(props: RootTabsProps) {
     })
   }, [])
 
-  const registerContent = useCallback((triggerId: string, contentId: string) => {
+  const registerContent = useCallback((contentId: string) => {
     setTabs(prev => {
       const alreadyRegistered = prev.some(tab => tab.contentId === contentId);
-      if (alreadyRegistered) return prev;
+      if (alreadyRegistered) {
+        console.log('Content already registered');
+        return prev;
+      }
+
+      const lastUnregistred = prev.find(tab => tab.contentId === null);
       
-      const tab = prev.find(t => t.id === triggerId);
-      if (tab?.contentId) return prev;
+      if (lastUnregistred === undefined) {
+        console.log('All tabs are registered');
+        return prev;
+      }
+
+      const triggerId = lastUnregistred.id;
       
       return prev.map(tab => 
         tab.id === triggerId ? { ...tab, contentId } : tab
       );
     })
 
-    if (!activeContentId) {
-      setActiveContentId(contentId);
-    }
+    setActiveContentId(prev => {
+      if (!prev) {
+        return contentId;
+      }
+      return prev;
+    });
   }, []);
 
+  const contextValue = useMemo(() => ({
+    tabs,
+    activeContentId,
+    setActiveContentId,
+    registerTrigger,
+    registerContent,
+  }), [tabs, activeContentId, setActiveContentId, registerTrigger, registerContent]);
+
   return (
-    <TabsContext.Provider value={{tabs, activeContentId, setActiveContentId, registerTrigger, registerContent}}>
+    <TabsContext.Provider value={contextValue}>
       {children}
     </TabsContext.Provider>
   )
 }
 
 function TabsContent ({children}: {children: React.ReactNode}) {
-   const {tabs, activeContentId, registerContent} = useTabsContext();
+   const {activeContentId, registerContent} = useTabsContext();
 
    const contentId = useId();
 
    useEffect(() => {
-    const emptyTab = tabs.findLast(tab => tab.contentId === null);
-
-    if (emptyTab) {
-      registerContent(emptyTab.id, contentId);
-    }
-   }, [tabs, contentId, registerContent])
+    registerContent(contentId);
+   }, [contentId, registerContent])
 
    return activeContentId === contentId ? (
     <div className='tabs-content'>
@@ -248,17 +264,17 @@ function ModalContent ({children}: {children: React.ReactNode}) {
   const {isOpen, setIsOpen} = useModalContext();
 
   useEffect(() => {
+    if (!isOpen) return;
+
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setIsOpen(false);
       }
     }
 
-    if (isOpen) {
-      document.addEventListener('keydown', handleEscape);
-      return () => document.removeEventListener('keydown', handleEscape);
-    }
-  }, [isOpen]);
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen, setIsOpen]);
 
   return isOpen ? (
     <div className='modal-content'>
