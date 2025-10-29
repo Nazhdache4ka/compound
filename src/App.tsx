@@ -340,7 +340,6 @@ const Modal: ModalComponent = Object.assign(RootModal, {
 type AccordionItem = {
   id: string;
   contentId: string | null;
-  isActive?: boolean;
 }
 
 type AccordionContextType = {
@@ -372,7 +371,7 @@ function RootAccordion ({children}: {children: React.ReactNode}) {
         return prev;
       }
 
-      return [...prev, {id, contentId: null, isActive: false}];
+      return [...prev, {id, contentId: null}];
     })
   }, []);
 
@@ -403,7 +402,7 @@ function RootAccordion ({children}: {children: React.ReactNode}) {
     setActiveContentId,
     registerTrigger,
     registerContent,
-  }), [items, activeContentId, setActiveContentId, registerTrigger, registerContent]);
+  }), [items, activeContentId, registerTrigger, registerContent]);
 
   return (
     <AccordionContext.Provider value={contextValue}>
