@@ -1,9 +1,18 @@
-import { createContext, useContext, useMemo, useState, useEffect } from 'react';
+import { createContext, useContext, useMemo, useState, useEffect, useId, useCallback } from 'react';
 import './App.css';
 
+type TabItem = {
+  id: string;
+  contentId: string | null;
+  isActive?: boolean;
+}
+
 type TabsContextType = {
-  value: string, 
-  setValue: (value: string) => void, 
+  tabs: TabItem[];
+  activeContentId: string | null;
+  setActiveContentId: (contentId: string | null) => void;
+  registerTrigger: (id: string) => void;
+  registerContent: (contentId: string) => void;
 }
 
 const TabsContext = createContext<TabsContextType | null>(null);
@@ -18,39 +27,60 @@ const useTabsContext = () => {
 
 interface RootTabsProps {
   children: React.ReactNode;
-  value?: string;
-  defaultActiveKey: string;
-  onChange?: (value: string) => void;
 }
 
 function RootTabs(props: RootTabsProps) {
   const {
      children,
-     value, 
-     defaultActiveKey, 
-     onChange 
   } = props;
-
-  const [internalValue, setInternalValue] = useState(defaultActiveKey);
+  const [tabs, setTabs] = useState<TabItem[]>([]);
+  const [activeContentId, setActiveContentId] = useState<string | null>(null);
   
-  const isControlled = value !== undefined;
+  const registerTrigger = useCallback((id: string) => {
+    setTabs(prev => {
+      if (prev.find(tab => tab.id === id)) return prev;
 
-  const activeKey = isControlled ? value : internalValue;
+      return [...prev, {id, contentId: null, isActive: false}];
+    })
+  }, [])
 
-  const setValue = (newValue: string) => {
-    if (newValue === activeKey) return;
+  const registerContent = useCallback((contentId: string) => {
+    setTabs(prev => {
+      const alreadyRegistered = prev.some(tab => tab.contentId === contentId);
+      if (alreadyRegistered) {
+        console.log('Content already registered');
+        return prev;
+      }
 
-    if (isControlled) {
-      onChange?.(newValue);
-    } else {
-      setInternalValue(newValue);
-    }
-  }
+      const lastUnregistred = prev.find(tab => tab.contentId === null);
+      
+      if (lastUnregistred === undefined) {
+        console.log('All tabs are registered');
+        return prev;
+      }
+
+      const triggerId = lastUnregistred.id;
+      
+      return prev.map(tab => 
+        tab.id === triggerId ? { ...tab, contentId } : tab
+      );
+    })
+
+    setActiveContentId(prev => {
+      if (!prev) {
+        return contentId;
+      }
+      return prev;
+    });
+  }, []);
 
   const contextValue = useMemo(() => ({
-    value: activeKey,
-    setValue,
-  }), [activeKey, setValue]);
+    tabs,
+    activeContentId,
+    setActiveContentId,
+    registerTrigger,
+    registerContent,
+  }), [tabs, activeContentId, setActiveContentId, registerTrigger, registerContent]);
 
   return (
     <TabsContext.Provider value={contextValue}>
@@ -59,14 +89,20 @@ function RootTabs(props: RootTabsProps) {
   )
 }
 
-function TabsContent ({value, children}: {value: string, children: React.ReactNode}) {
-   const {value: activeKey} = useTabsContext();
+function TabsContent ({children}: {children: React.ReactNode}) {
+   const {activeContentId, registerContent} = useTabsContext();
 
-   return activeKey === value ? 
-    (<div className='tabs-content'>
+   const contentId = useId();
+
+   useEffect(() => {
+    registerContent(contentId);
+   }, [contentId, registerContent])
+
+   return activeContentId === contentId ? (
+    <div className='tabs-content'>
       {children}
-    </div>) 
-    : null;
+    </div>
+   ) : null;
 }
 
 function TabsList  ({children, style}: {children: React.ReactNode, style?: React.CSSProperties}) {
@@ -77,38 +113,69 @@ function TabsList  ({children, style}: {children: React.ReactNode, style?: React
   )
 }
 
-function TabsTrigger ({value, children, disabled}: {value: string, children: React.ReactNode, disabled?: boolean}) {
-  const {value: activeKey, setValue} = useTabsContext();
+function TabsTrigger ({children, disabled}: {children: React.ReactNode, disabled?: boolean}) {
+  const {registerTrigger, tabs, setActiveContentId, activeContentId} = useTabsContext();
 
-  const isActive = activeKey === value;
+  const triggerId = useId();
+
+  useEffect(() => {
+    registerTrigger(triggerId);
+  }, [triggerId, registerTrigger]);
+
+  const myTab = tabs.find(tab => tab.id === triggerId);
+  const isActive = myTab?.contentId === activeContentId;
+
+  const handleClick = useCallback(() => {
+    if (myTab?.contentId) {
+      setActiveContentId(myTab.contentId);
+    }
+  }, [myTab, setActiveContentId]);
 
   const style = isActive ? {backgroundColor: 'blue', color: 'white'} : {};
 
   return (
-    <button className='tabs-trigger' onClick={() => setValue(value)} disabled={disabled} style={style} >
+    <button className='tabs-trigger' onClick={handleClick} disabled={disabled} style={style}>
       {children}
     </button>
   )
 }
 
 function TabsNavigate () {
-  const {value: activeKey, setValue} = useTabsContext();
+  const {activeContentId, setActiveContentId, tabs} = useTabsContext();
+
+  if (!activeContentId) return null;
 
   const handlePrev = () => {
-    if (Number(activeKey) === 1) {
-      setValue('3');
+    const currentIndex = tabs.findIndex(tab => tab.contentId === activeContentId);
+    if (currentIndex === -1) return;
+    
+    if (currentIndex === 0) {
+      const lastTab = tabs[tabs.length - 1];
+      if (lastTab?.contentId) {
+        setActiveContentId(lastTab.contentId);
+      }
     } else {
-      const newKey = String(Number(activeKey) - 1);
-      setValue(newKey);
+      const prevTab = tabs[currentIndex - 1];
+      if (prevTab?.contentId) {
+        setActiveContentId(prevTab.contentId);
+      }
     }
   }
 
   const handleNext = () => {
-    if (Number(activeKey) === 3) {
-      setValue('1');
+    const currentIndex = tabs.findIndex(tab => tab.contentId === activeContentId);
+    if (currentIndex === -1) return;
+    
+    if (currentIndex === tabs.length - 1) {
+      const firstTab = tabs[0];
+      if (firstTab?.contentId) {
+        setActiveContentId(firstTab.contentId);
+      }
     } else {
-      const newKey = String(Number(activeKey) + 1);
-      setValue(newKey);
+      const nextTab = tabs[currentIndex + 1];
+      if (nextTab?.contentId) {
+        setActiveContentId(nextTab.contentId);
+      }
     }
   }
 
@@ -197,17 +264,17 @@ function ModalContent ({children}: {children: React.ReactNode}) {
   const {isOpen, setIsOpen} = useModalContext();
 
   useEffect(() => {
+    if (!isOpen) return;
+
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setIsOpen(false);
       }
     }
 
-    if (isOpen) {
-      document.addEventListener('keydown', handleEscape);
-      return () => document.removeEventListener('keydown', handleEscape);
-    }
-  }, [isOpen]);
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen, setIsOpen]);
 
   return isOpen ? (
     <div className='modal-content'>
@@ -271,18 +338,17 @@ const Modal: ModalComponent = Object.assign(RootModal, {
 });
 
 export function App() {
-  const [activeTab, setActiveTab] = useState('1');
   return (
     <div className='app'>
-      <Tabs defaultActiveKey='1' value={activeTab} onChange={setActiveTab}>
+      <Tabs>
         <Tabs.List>
-          <Tabs.Trigger value='1'>Tab 1</Tabs.Trigger>
-          <Tabs.Trigger value='2'>Tab 2</Tabs.Trigger>
-          <Tabs.Trigger value='3'>Tab 3</Tabs.Trigger>
+          <Tabs.Trigger >Tab 1</Tabs.Trigger>
+          <Tabs.Trigger >Tab 2</Tabs.Trigger>
+          <Tabs.Trigger>Tab 3</Tabs.Trigger>
         </Tabs.List>
-        <Tabs.Content value='1'>Привет</Tabs.Content>
-        <Tabs.Content value='2'>Как дела? Как погода?</Tabs.Content>
-        <Tabs.Content value='3'>Азаза</Tabs.Content>
+        <Tabs.Content >Привет</Tabs.Content>
+        <Tabs.Content >Как дела? Как погода?</Tabs.Content>
+        <Tabs.Content >Азаза</Tabs.Content>
         <Tabs.Navigate />
       </Tabs>
 
