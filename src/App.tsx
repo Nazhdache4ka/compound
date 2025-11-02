@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, useState, useEffect, useId, useCallback } from 'react';
+import { useSpring, animated } from 'react-spring';
 import './App.css';
 
 type TabItem = {
@@ -12,7 +13,9 @@ type TabsContextType = {
   activeContentId: string | null;
   setActiveContentId: (contentId: string | null) => void;
   registerTrigger: (id: string) => void;
+  unregisterTrigger: (id: string) => void;
   registerContent: (contentId: string) => void;
+  unregisterContent: (contentId: string) => void;
 }
 
 const TabsContext = createContext<TabsContextType | null>(null);
@@ -74,13 +77,33 @@ function RootTabs(props: RootTabsProps) {
     });
   }, []);
 
+  const unregisterTrigger = useCallback((id: string) => {
+    setTabs(prev => {
+      const updatedTabs = prev.filter(tab => tab.id !== id);
+
+      return updatedTabs;
+    });
+  }, []);
+
+  const unregisterContent = useCallback((contentId: string) => {
+    setTabs(prev => {
+      const updatedTabs = prev.map(tab =>
+        tab.contentId === contentId ? {...tab, contentId: null} : tab
+      );
+
+      return updatedTabs;
+    });
+  }, []);
+
   const contextValue = useMemo(() => ({
     tabs,
     activeContentId,
     setActiveContentId,
     registerTrigger,
     registerContent,
-  }), [tabs, activeContentId, setActiveContentId, registerTrigger, registerContent]);
+    unregisterTrigger,
+    unregisterContent,
+  }), [tabs, activeContentId, setActiveContentId, registerTrigger, registerContent, unregisterTrigger, unregisterContent]);
 
   return (
     <TabsContext.Provider value={contextValue}>
@@ -90,13 +113,15 @@ function RootTabs(props: RootTabsProps) {
 }
 
 function TabsContent ({children}: {children: React.ReactNode}) {
-   const {activeContentId, registerContent} = useTabsContext();
+   const {activeContentId, registerContent, unregisterContent} = useTabsContext();
 
    const contentId = useId();
 
    useEffect(() => {
     registerContent(contentId);
-   }, [contentId, registerContent])
+
+    return () => unregisterContent(contentId);
+   }, [contentId, registerContent, unregisterContent])
 
    return activeContentId === contentId ? (
     <div className='tabs-content'>
@@ -114,13 +139,15 @@ function TabsList  ({children, style}: {children: React.ReactNode, style?: React
 }
 
 function TabsTrigger ({children, disabled}: {children: React.ReactNode, disabled?: boolean}) {
-  const {registerTrigger, tabs, setActiveContentId, activeContentId} = useTabsContext();
+  const {registerTrigger, tabs, setActiveContentId, activeContentId, unregisterTrigger} = useTabsContext();
 
   const triggerId = useId();
 
   useEffect(() => {
     registerTrigger(triggerId);
-  }, [triggerId, registerTrigger]);
+
+    return () => unregisterTrigger(triggerId);
+  }, [triggerId, registerTrigger, unregisterTrigger]);
 
   const myTab = tabs.find(tab => tab.id === triggerId);
   const isActive = myTab?.contentId === activeContentId;
@@ -226,7 +253,7 @@ function RootModal ({children}: {children: React.ReactNode}) {
   const contextValue = useMemo(() => ({
     isOpen,
     setIsOpen,
-  }), [isOpen, setIsOpen]);
+  }), [isOpen]);
 
   return (
     <ModalContext.Provider value={contextValue}>
@@ -480,16 +507,24 @@ const Accordion: AccordionComponent = Object.assign(RootAccordion, {
 });
 
 export function App() {
+  const [visible, setVisible] = useState(true);
+
+  const spring = useSpring({
+    from: { x: -10 },
+    to: { x: 20 },
+  });
+
   return (
     <div className='app'>
+      <button onClick={() => setVisible(!visible)}>Hide/Show Tab 2: {visible ? 'Hide' : 'Show'}</button>
       <Tabs>
         <Tabs.List>
           <Tabs.Trigger >Tab 1</Tabs.Trigger>
-          <Tabs.Trigger >Tab 2</Tabs.Trigger>
+          {visible && <Tabs.Trigger >Tab 2</Tabs.Trigger>}
           <Tabs.Trigger>Tab 3</Tabs.Trigger>
         </Tabs.List>
         <Tabs.Content >Привет</Tabs.Content>
-        <Tabs.Content >Как дела? Как погода?</Tabs.Content>
+        {visible && <Tabs.Content >Как дела? Как погода?</Tabs.Content>}
         <Tabs.Content >Азаза</Tabs.Content>
         <Tabs.Navigate />
       </Tabs>
@@ -522,6 +557,16 @@ export function App() {
           <Accordion.Content>Content 3</Accordion.Content>
         </Accordion.Container>
       </Accordion>
+
+      <animated.div 
+        style={{
+          width: 80,
+          height: 80,
+          backgroundColor: 'red',
+          borderRadius: 10,
+          ...spring,
+        }}
+      />
     </div>
     
   )
